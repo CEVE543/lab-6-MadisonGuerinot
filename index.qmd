@@ -80,6 +80,7 @@ All packages that you need are included, and will be installed when you `instant
   - You can copy or paste the code blocks from the tutorial, but try to make sure you understand what each line is doing.
   - It's good practice to put all your `using` statements at the top of your code blocks. As work through more tutorials, put all the `using ...` statements together. Often, it's helpful to sort them alphabetically or in another logical order.
   - DO add brief text between code blocks -- think of this as your notes to yourself
+
 2. A lot of the functionality of `YAXArrays.jl` comes from from [`DimensionalData.jl`](https://rafaqz.github.io/DimensionalData.jl/stable/basics). In particular, functions for selecting subsets of data, and for grouping and aggregating data are provided in `DimensionalData`.
   - Read through the [Dimensions](https://rafaqz.github.io/DimensionalData.jl/stable/dimensions), [Selectors](https://rafaqz.github.io/DimensionalData.jl/stable/selectors), and other sections of the `DimensionalData` documentation under "Getting Started"
   - Work through the `YAXArrays` [tutorial on selecting data](https://juliadatacubes.github.io/YAXArrays.jl/dev/UserGuide/select.html)
@@ -116,6 +117,321 @@ While it probably can answer the whole lab for you, that would defeat the entire
 using Pkg
 lab_dir = dirname(@__FILE__)
 Pkg.activate(lab_dir)
-# Pkg.instantiate() # uncomment this the first time you run the lab to install packages, then comment it back
+#Pkg.instantiate() # uncomment this the first time you run the lab to install packages, then comment it back
+```
+
+1. Work through the [Getting Started with YAXArrays.jl](https://juliadatacubes.github.io/YAXArrays.jl/dev/get_started.html) user guide and implement the examples in this lab. Note that you will need to modify the code block to use `using ...` for all packages. 
+  - You can copy or paste the code blocks from the tutorial, but try to make sure you understand what each line is doing.
+  - It's good practice to put all your `using` statements at the top of your code blocks. As work through more tutorials, put all the `using ...` statements together. Often, it's helpful to sort them alphabetically or in another logical order.
+  - DO add brief text between code blocks -- think of this as your notes to yourself
+  ```{julia}
+using YAXArrays
+using YAXArrays: YAXArrays as YAX
+
+a = YAXArray(rand(2,3))
+  ```
+
+```{julia}
+  # axes or dimensions with name and tick values
+axlist = (
+    YAX.time(range(1, 20, length=20)),
+    lon(range(1, 10, length=10)),
+    lat(range(1, 5, length=15)),
+    Variables(["temperature", "precipitation"])
+)
+
+# the actual data matching the dimensions defined in axlist
+data = rand(20, 10, 15, 2)
+
+# metadata about the array
+props = Dict(
+    "origin" => "YAXArrays.jl example",
+    "x" => "longitude",
+    "y" => "latitude",
+);
+
+a2 = YAXArray(axlist, data, props)
+```
+
+
+```{julia}
+  a2[Variables=At("temperature"), time=1].data
+```
+
+2. A lot of the functionality of `YAXArrays.jl` comes from from [`DimensionalData.jl`](https://rafaqz.github.io/DimensionalData.jl/stable/basics). In particular, functions for selecting subsets of data, and for grouping and aggregating data are provided in `DimensionalData`.
+  - Read through the [Dimensions](https://rafaqz.github.io/DimensionalData.jl/stable/dimensions), [Selectors](https://rafaqz.github.io/DimensionalData.jl/stable/selectors), and other sections of the `DimensionalData` documentation under "Getting Started"
+  - Work through the `YAXArrays` [tutorial on selecting data](https://juliadatacubes.github.io/YAXArrays.jl/dev/UserGuide/select.html)
+    - Pro tip: replace `path = download(url, fname)` with `if !isfile(fname); download(url, fname); end` to avoid re-downloading the file every time you run the code block
+
+```{julia}
+using DimensionalData
+using YAXArrays
+using NetCDF
+using Downloads: download
+
+fname = "example.nc"
+if !isfile(fname); 
+  download("https://archive.unidata.ucar.edu/software/netcdf/examples/tos_O1_2001-2002.nc", "example.nc")
+end
+ds = open_dataset(fname)
+
+```
+
+```{julia}
+tos = ds.tos
+```
+
+```{julia}
+#lots of different ways to call the data
+tos[lon = 1, lat = 1]
+tos[lon = At(1), lat = At(-79.5)]
+tos[lon = 90 .. 180]
+```
+
+3. Working through tutorials can get repetitive, so you don't need to implement every YAXArrays user guide. However, do take a few minutes to browse through the other available guides so you're aware of what functionality exists when you need it later.
+
+4. Work through the [Plotting Maps](https://juliadatacubes.github.io/YAXArrays.jl/dev/tutorials/plottingmaps.html) tutorial
+  - Instead of `GLMakie`, we will use `CairoMakie`. You can replace `using GLMakie` and `using GLMakie.GeometryBasics` with `using CairoMakie` and `using CairoMakie.GeometryBasics`. Read more about Makie backends [here](https://docs.makie.org/dev/explanations/backends/backends)
+  - Don't worry about the `AlgebraofGraphics.jl` component, although it is installed if you want to try.
+```{julia}
+using Zarr, YAXArrays, Dates
+using DimensionalData
+using CairoMakie
+using CairoMakie.GeometryBasics
+
+store ="gs://cmip6/CMIP6/ScenarioMIP/DKRZ/MPI-ESM1-2-HR/ssp585/r1i1p1f1/3hr/tas/gn/v20190710/"
+```
+
+```{julia}
+g = open_dataset(zopen(store, consolidated=true))
+```
+
+```{julia}
+c = g["tas"];
+```
+
+```{julia}
+ct1_slice = c[time = Near(Date("2015-01-01"))];
+```
+
+```{julia}
+lon_d = lookup(ct1_slice, :lon)
+lat_d = lookup(ct1_slice, :lat)
+data_d = ct1_slice.data[:,:];
+```
+
+```{julia}
+CairoMakie.activate!()
+
+fig, ax, plt = heatmap(ct1_slice; colormap = :seaborn_icefire_gradient,
+    axis = (; aspect=DataAspect()),
+    figure = (; size = (1200,600), fontsize=24))
+fig
+```
+
+```{julia}
+δlon = (lon_d[2] - lon_d[1])/2
+nlon = lon_d .- 180 .+ δlon
+ndata = circshift(data_d, (192,1))
+```
+```{julia}
+δlon = (lon_d[2] - lon_d[1])/2
+nlon = lon_d .- 180 .+ δlon
+ndata = circshift(data_d, (192,1))
+```
+```{julia}
+using GeoMakie
+
+fig = Figure(;size=(1200,600))
+ax = GeoAxis(fig[1,1])
+surface!(ax, nlon, lat_d, ndata; colormap = :seaborn_icefire_gradient, shading=false)
+cl=lines!(ax, GeoMakie.coastlines(), color = :white, linewidth=0.85)
+translate!(cl, 0, 0, 1000)
+fig
+```
+
+```{julia}
+fig = Figure(; size=(1200,600))
+ax = GeoAxis(fig[1,1]; dest = "+proj=moll")
+surface!(ax, nlon, lat_d, ndata; colormap = :seaborn_icefire_gradient, shading=false)
+cl=lines!(ax, GeoMakie.coastlines(), color = :white, linewidth=0.85)
+translate!(cl, 0, 0, 1000)
+fig
+```
+```{julia}
+fig = Figure(; size=(1200,600))
+ax = GeoAxis(fig[1,1]; dest = "+proj=moll")
+surface!(ax, nlon, lat_d, ndata; colormap = :seaborn_icefire_gradient, shading=false)
+cl=lines!(ax, GeoMakie.coastlines(), color = :white, linewidth=0.85)
+translate!(cl, 0, 0, 1000)
+fig
+```
+```{julia}
+
+ds = replace(ndata, missing =>NaN)
+sphere = uv_normal_mesh(Tesselation(Sphere(Point3f(0), 1), 128))
+
+fig = Figure(backgroundcolor=:grey25, size=(500,500))
+ax = LScene(fig[1,1], show_axis=false)
+mesh!(ax, sphere; color = ds'[end:-1:1,:], shading=false,
+    colormap = :seaborn_icefire_gradient)
+zoom!(ax.scene, cameracontrols(ax.scene), 0.5)
+rotate!(ax.scene, 2.5)
+fig
+```
+
+5. The `store ="gs://cmip6/CMIP6/ScenarioMIP/DKRZ/MPI-ESM1-2-HR/ssp585/r1i1p1f1/3hr/tas/gn/v20190710/"` for the Plotting Maps tutorial is actually quite powerful.
+  - What are we working with? Refer to the [CMIP6 Data Reference Syntax](https://pcmdi.llnl.gov/CMIP6/Guide/dataUsers.html) for more information on the file structure used
+    - `cmip6`: name of the top-level Google Cloud storage bucket (hence `gs`)
+    - `CMIP6`: root directory for the project
+    - `ScenarioMIP`: MIP (Model Intercomparison Project) name
+    - `DKRZ`: institution ID (here, the German Climate Computing Center)
+    - `MPI-ESM1-2-HR`: source ID (here, the Max Planck Institute Earth System Model, version 1-2, high resolution version)
+    - `ssp585`: experiment ID (here, the Shared Socioeconomic Pathway 5-8.5, a very high emissions scenario)
+    - `r1i1p1f1`: variant label. `r1` is realization 1 (this would change for different ensemble members, if available). `i1` is initialization method 1. `p1` is physics version 1. `f1` is forcing index 1
+    - `3hr`: time frequency (3-hourly data)
+    - `tas`:  variable ID (near-surface air temperature)
+    - `gn`: grid label (native grid)
+    - `v20190710`: version (version date)
+  - Select a single rectangular region. Compute the average `tas` over that region (if you're fancy, weight by the cosine of latitude to account for the decreasing area of grid cells towards the poles, as shown in [this xarray example](https://docs.xarray.dev/en/latest/examples/area_weighted_temperature.html)) and plot the time series of `tas` for that region.
+
+```{julia}
+using Zarr, YAXArrays, Dates
+using DimensionalData
+using CairoMakie
+using CairoMakie.GeometryBasics
+# load packages and the data
+remote_store_url ="gs://cmip6/CMIP6/ScenarioMIP/DKRZ/MPI-ESM1-2-HR/ssp585/r1i1p1f1/3hr/tas/gn/v20190710/"
+
+local_nc_path = "tas_region_100E_88N.nc" # We will save our slice here as NetCDF but could use a different back end
+```
+
+#this code is not running
+# 2. Check if the local file exists. If not, create it.
+if !isfile(local_nc_path)
+    println("Local file not found. Downloading region from GCS...")
+    
+    # Use a 'do' block to safely open and close the remote dataset
+    open_dataset(zopen(remote_store_url, consolidated=true)) do g
+        # Get the 'tas' variable (still lazy)
+        tas = g["tas"]
+        
+        # Define the regional slice (still lazy)
+        region_remote = tas[lon = 100 .. 101, lat = 88 .. 88.5]
+        
+        # This line triggers the download and saves the result
+        println("Saving region to: $local_nc_path")
+        savecube(region_remote, local_nc_path, driver=:netcdf)
+    end
+    
+    println("Local region file created.")
+else
+    println("Local file $local_nc_path already exists. Skipping download.")
+end
+
+
+# 3. Now, perform the analysis on the *local file*
+# We use another 'do' block to open/close the local NetCDF safely
+println("Calculating mean from local file...")
+avg_tas = open_dataset(local_nc_path) do region
+    # This read is now from local disk, so it's very fast
+    mean(skipmissing(region))
+end
+
+println("Average TAS for the region: $avg_tas")
+
+
+```{julia}
+#= open the data as g
+g = open_dataset(zopen(store, consolidated=true))
+=#
+```
+
+```{julia}
+#= 
+#pull the tas data, defined as c
+tas = g["tas"];
+=#
+```
+
+```{julia}
+#= 
+#define rectangle
+using DimensionalData
+region = tas[lon = 100 .. 101, lat = 88.. 88.5]
+=#
+```
+
+```{julia}
+#= 
+using Statistics
+avg_tas = mean(skipmissing(region))
+=#
+```
+```{julia}
+#= 
+avg_tas
+=#
+```
+
+plot the time series of `tas` for that region.
+```{julia}
+#= 
+avg_tas_time = mean(region; dims=(:lat, :lon))
+time = region.time  # get the time coordinate
+=#
+```
+```{julia}
+#= 
+using CairoMakie
+
+fig = Figure(resolution = (800, 400))
+ax = Axis(fig[1, 1], xlabel = "Time", ylabel = "tas (K)",
+          title = "Spatially Averaged tas Time Series")
+
+lines!(ax, time, avg_tas_time, color = :blue, linewidth = 2)
+
+fig
+=#
+
+```
+
+  - Using that time series, find the hottest and coldest 3-hourly periods in the entire dataset for that region. For those two time periods, plot the spatial distribution of `tas` over the entire globe using a map projection of your choice.
+
+
+```{julia}
+#= 
+using StatsBase
+idx_hottest = argmax(avg_tas_time_array)
+idx_coldest = argmin(avg_tas_time_array)
+
+println("Hottest period at time: ", time_array[idx_hottest])
+println("Coldest period at time: ", time_array[idx_coldest])
+=#
+```
+
+```{julia}
+#= 
+#get the point in time across the globe
+tas_hottest = tas[idx_hottest, :, :] 
+tas_coldest = tas[idx_coldest, :, :]
+=#
+```
+
+```{julia}
+#= 
+fig, ax, plt = heatmap(tas_hottest; colormap = :seaborn_icefire_gradient,
+    axis = (; aspect=DataAspect()),
+    figure = (; size = (1200,600), fontsize=24))
+fig
+=#
+```
+```{julia}
+#= 
+fig, ax, plt = heatmap(tas_coldest; colormap = :seaborn_icefire_gradient,
+    axis = (; aspect=DataAspect()),
+    figure = (; size = (1200,600), fontsize=24))
+fig
+=#
 ```
 
